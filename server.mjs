@@ -117,13 +117,29 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'POST' && p === '/api/import') {
       const b = await readBody(req)
-      if (!b.session || !b.userid) return send(res, 400, { error: '缺少 session 或 userid' })
+      let acct = null
+      if (b.content != null) {
+        // 整份 token 文件内容粘贴：JSON 对象 / JSON 字符串 / 裸 session 串
+        const text = String(b.content).trim()
+        try {
+          const parsed = JSON.parse(text)
+          acct = typeof parsed === 'string' ? { session: parsed } : parsed
+        } catch {
+          if (/^[0-9a-f]{16,64}$/i.test(text)) acct = { session: text }
+          else return send(res, 400, { error: '无法解析：需要 token JSON 或裸 session 串' })
+        }
+      } else {
+        // 兼容旧字段方式
+        acct = { session: b.session, userid: b.userid, phone: b.phone, nickname: b.nickname, name: b.name }
+      }
+      if (!acct?.session) return send(res, 400, { error: '缺少 session' })
+      if (!acct.userid) return send(res, 400, { error: '缺少 userid（token 文件里应有 userid 字段）' })
       const { created } = mgr.upsertAccount({
-        userid: String(b.userid),
-        session: String(b.session),
-        phone: String(b.phone || ''),
-        nickname: String(b.nickname || ''),
-        name: String(b.name || ''),
+        userid: String(acct.userid),
+        session: String(acct.session),
+        phone: String(acct.phone || ''),
+        nickname: String(acct.nickname || ''),
+        name: String(acct.name || ''),
         source: 'web-import',
         importedAt: Date.now(),
       })
@@ -131,7 +147,7 @@ const server = http.createServer(async (req, res) => {
         const root = mgr.findLoomyRoots()[0]
         if (!root) return send(res, 500, { error: '未找到本机 Loomy 安装' })
         const backupDir = mgr.backupNow(root)
-        mgr.applySession(root, { userid: String(b.userid), session: String(b.session), phone: String(b.phone || '') })
+        mgr.applySession(root, { userid: String(acct.userid), session: String(acct.session), phone: String(acct.phone || '') })
         return send(res, 200, { ok: true, created, backupDir, switched: true })
       }
       return send(res, 200, { ok: true, created })

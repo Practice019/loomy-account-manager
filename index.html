@@ -51,14 +51,14 @@
   </div>
 
   <div class="card">
-    <h2>导入账号（token 文件内容粘贴，或先扫描注册机账号）</h2>
-    <div class="row">
-      <label>session <input type="text" id="inpSession" style="width:240px" placeholder="粘贴 session"></label>
-      <label>userid <input type="text" id="inpUserid" style="width:150px" placeholder="账号 userid"></label>
-      <label>手机号 <input type="text" id="inpPhone" style="width:110px" placeholder="可选"></label>
-      <label>昵称 <input type="text" id="inpNick" style="width:100px" placeholder="可选"></label>
-      <label><input type="checkbox" id="inpSwitch"> 导入并立即切换</label>
-      <button class="primary" id="btnImport">导入</button>
+    <h2>导入账号 <span class="dim">（粘贴整个 token 文件内容，或先扫描注册机账号）</span></h2>
+    <div class="row" style="flex-direction:column; align-items:stretch; gap:8px">
+      <textarea id="inpToken" rows="5" style="background:#0d0f14; border:1px solid var(--line); color:var(--fg); border-radius:6px; padding:8px; font:12px/1.5 Consolas, monospace; resize:vertical" placeholder='粘贴整个 token 文件内容，例如：&#10;{&#10;  "session": "d4e24e6be34d43fca8733c96a5880cbc",&#10;  "userid": "260911173523492332",&#10;  "phone": "15083583411",&#10;  "nickname": "NK3583411",&#10;  "updatedAt": 1789405026667&#10;}'></textarea>
+      <div class="row" style="margin-bottom:0">
+        <label><input type="checkbox" id="inpSwitch"> 导入并立即切换</label>
+        <button class="primary" id="btnImport">导入</button>
+        <span class="dim" id="importResult"></span>
+      </div>
     </div>
     <div class="row">
       <button id="btnScan">扫描注册机账号</button>
@@ -156,22 +156,22 @@ async function doExport(userid) {
 }
 
 $('btnImport').onclick = async () => {
-  const session = $('inpSession').value.trim()
-  const userid = $('inpUserid').value.trim()
-  if (!session || !userid) { alert('请填写 session 和 userid'); return }
+  const text = $('inpToken').value.trim()
+  if (!text) { alert('请粘贴 token 文件内容'); return }
+  $('importResult').textContent = '导入中…'
   try {
     const r = await api('/api/import', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        session, userid, phone: $('inpPhone').value.trim(), nickname: $('inpNick').value.trim(),
-        doSwitch: $('inpSwitch').checked,
-      }),
+      body: JSON.stringify({ content: text, doSwitch: $('inpSwitch').checked }),
     })
-    alert(r.switched ? '已导入并切换（备份: ' + r.backupDir + '）' : '导入成功')
-    $('inpSession').value = ''; $('inpUserid').value = ''
+    $('importResult').textContent = r.switched ? '已导入并切换（备份: ' + r.backupDir + '）' : '导入成功'
+    $('inpToken').value = ''
     refresh()
-  } catch (e) { alert('导入失败: ' + e.message) }
+  } catch (e) {
+    $('importResult').textContent = ''
+    alert('导入失败: ' + e.message)
+  }
 }
 
 $('btnScan').onclick = async () => {
