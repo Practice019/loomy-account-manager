@@ -1,0 +1,7 @@
+# 敏感 / 运行生成数据（含真实账号 session）——不入库
+managed-accounts.json
+backups/
+tokens/
+
+# Node
+node_modules/

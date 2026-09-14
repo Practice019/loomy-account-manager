@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loomy 账号管理器</title>
+<style>
+  :root { --bg:#0f1115; --card:#171a21; --line:#262b36; --fg:#e6e9ef; --dim:#8b93a3; --ok:#3fb950; --err:#f85149; --warn:#d29922; --acc:#58a6ff; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.6 "Microsoft YaHei", system-ui, sans-serif; }
+  .wrap { max-width:980px; margin:0 auto; padding:16px; }
+  h1 { font-size:18px; margin:4px 0 14px; }
+  h1 small { color:var(--dim); font-weight:normal; font-size:12px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:14px; margin-bottom:14px; }
+  .card h2 { margin:0 0 10px; font-size:14px; color:var(--acc); }
+  .row { display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; margin-bottom:10px; }
+  label { color:var(--dim); display:inline-flex; align-items:center; gap:6px; }
+  input[type=text] { background:#0d0f14; border:1px solid var(--line); color:var(--fg); border-radius:6px; padding:6px 8px; }
+  input[type=checkbox] { accent-color:var(--acc); }
+  button { background:#21262d; color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:7px 14px; cursor:pointer; font-size:13px; }
+  button:hover { border-color:var(--acc); }
+  button.primary { background:var(--acc); color:#04121f; font-weight:bold; border:none; }
+  button.primary:hover { filter:brightness(1.1); }
+  button.danger { border-color:var(--err); color:var(--err); }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th { color:var(--dim); font-weight:normal; }
+  td.mono { font-family:Consolas, monospace; }
+  pre.out { background:#0a0c10; border:1px solid var(--line); border-radius:6px; padding:10px; height:180px; overflow:auto; font:12px/1.55 Consolas, monospace; white-space:pre-wrap; word-break:break-all; margin:0; }
+  .badge { display:inline-block; padding:2px 12px; border-radius:20px; font-size:12px; }
+  .badge.on { background:#3fb95022; color:var(--ok); }
+  .badge.off { background:#1f6feb22; color:#79c0ff; }
+  .dim { color:var(--dim); }
+  .ok { color:var(--ok); } .err { color:var(--err); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Loomy 账号管理器 <small>webui · 127.0.0.1:3091 · 只监听本机 · 切换前自动备份</small></h1>
+
+  <div class="card">
+    <h2>当前状态</h2>
+    <div class="row">
+      <span class="dim">当前激活：</span><span id="active">加载中…</span>
+      <span class="dim">Loomy 运行中：</span><span id="running" class="badge off">…</span>
+      <span class="dim">备份：</span><span id="backupCount">…</span>
+      <button id="btnRestore">↺ 恢复上次切换</button>
+      <button id="btnRefresh">刷新</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>导入账号（token 文件内容粘贴，或先扫描注册机账号）</h2>
+    <div class="row">
+      <label>session <input type="text" id="inpSession" style="width:240px" placeholder="粘贴 session"></label>
+      <label>userid <input type="text" id="inpUserid" style="width:150px" placeholder="账号 userid"></label>
+      <label>手机号 <input type="text" id="inpPhone" style="width:110px" placeholder="可选"></label>
+      <label>昵称 <input type="text" id="inpNick" style="width:100px" placeholder="可选"></label>
+      <label><input type="checkbox" id="inpSwitch"> 导入并立即切换</label>
+      <button class="primary" id="btnImport">导入</button>
+    </div>
+    <div class="row">
+      <button id="btnScan">扫描注册机账号</button>
+      <span class="dim" id="scanResult"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>托管账号</h2>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr><th>#</th><th>手机号</th><th>userid</th><th>session</th><th>昵称</th><th>来源</th><th>当前</th><th>操作</th></tr></thead>
+        <tbody id="body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>输出</h2>
+    <pre class="out" id="out">（导出内容会显示在这里）</pre>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id)
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+
+async function api(p, opts) {
+  const r = await fetch(p, opts)
+  const t = await r.text()
+  let j
+  try { j = JSON.parse(t) } catch { j = { raw: t } }
+  if (!r.ok) throw new Error(j.error || j.raw || r.status)
+  return j
+}
+
+async function refresh() {
+  try {
+    const s = await api('/api/status')
+    const active = s.roots && s.roots.length ? s.roots[0].active : null
+    $('active').textContent = active
+      ? `userid=${esc(active.userid)} phone=${esc(active.phone || '-')} session=${esc(active.session.slice(0, 8))}…`
+      : '（未登录）'
+    const r = $('running')
+    r.textContent = s.running ? '是' : '否'
+    r.className = s.running ? 'badge on' : 'badge off'
+    $('backupCount').textContent = s.backups.length + ' 个'
+    const tb = $('body')
+    if (!s.accounts.length) {
+      tb.innerHTML = '<tr><td colspan="8" class="dim">暂无托管账号 — 粘贴导入，或点「扫描注册机账号」</td></tr>'
+      return
+    }
+    tb.innerHTML = s.accounts.map((a, i) => '<tr>'
+      + '<td>' + (i + 1) + '</td>'
+      + '<td class="mono">' + esc(a.phone || '-') + '</td>'
+      + '<td class="mono">' + esc(a.userid) + '</td>'
+      + '<td class="mono">' + esc(a.session.slice(0, 8)) + '…</td>'
+      + '<td>' + esc(a.nickname || a.name || '-') + '</td>'
+      + '<td>' + esc(a.source || '-') + '</td>'
+      + '<td>' + (active && active.userid === a.userid ? '<span class="ok">✔ 激活</span>' : '') + '</td>'
+      + '<td><button data-uid="' + esc(a.userid) + '" class="btnSwitch">切换</button> '
+      + '<button data-uid="' + esc(a.userid) + '" class="btnExport">导出</button></td>'
+      + '</tr>').join('')
+    tb.querySelectorAll('.btnSwitch').forEach((b) => { b.onclick = () => doSwitch(b.dataset.uid) })
+    tb.querySelectorAll('.btnExport').forEach((b) => { b.onclick = () => doExport(b.dataset.uid) })
+  } catch { /* 忽略 */ }
+}
+
+async function doSwitch(userid) {
+  if (!confirm('切换到该账号？（当前登录态自动备份，可随时恢复）')) return
+  const restart = confirm('Loomy 正在运行的话，是否顺便重启应用让新账号生效？\n\n确定=重启 / 取消=只切文件')
+  try {
+    const r = await api('/api/switch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userid, restart }),
+    })
+    alert('已切换 → ' + r.applied.userid + ' session=' + (r.applied.session || '').slice(0, 8) + '…'
+      + '\n备份: ' + r.backupDir
+      + (r.restart ? '\n已重启 Loomy' : (r.running ? '\n⚠ Loomy 仍在运行，重启后生效' : '\nLoomy 未运行，下次启动即生效')))
+    refresh()
+  } catch (e) { alert('切换失败: ' + e.message) }
+}
+
+async function doExport(userid) {
+  try {
+    const r = await api('/api/export', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userid }),
+    })
+    $('out').textContent = '[账号导出] ' + r.file + '\n' + JSON.stringify(r.content, null, 2)
+    alert('已导出 token 文件：\n' + r.file + '\n\n把该文件发给对方，对方执行：node manager.mjs import <文件> --switch')
+  } catch (e) { alert('导出失败: ' + e.message) }
+}
+
+$('btnImport').onclick = async () => {
+  const session = $('inpSession').value.trim()
+  const userid = $('inpUserid').value.trim()
+  if (!session || !userid) { alert('请填写 session 和 userid'); return }
+  try {
+    const r = await api('/api/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session, userid, phone: $('inpPhone').value.trim(), nickname: $('inpNick').value.trim(),
+        doSwitch: $('inpSwitch').checked,
+      }),
+    })
+    alert(r.switched ? '已导入并切换（备份: ' + r.backupDir + '）' : '导入成功')
+    $('inpSession').value = ''; $('inpUserid').value = ''
+    refresh()
+  } catch (e) { alert('导入失败: ' + e.message) }
+}
+
+$('btnScan').onclick = async () => {
+  try {
+    const r = await api('/api/scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+    $('scanResult').textContent = `发现 ${r.found} 个，新增 ${r.added} 个`
+    refresh()
+  } catch (e) { alert('扫描失败: ' + e.message) }
+}
+
+$('btnRestore').onclick = async () => {
+  if (!confirm('恢复最近一次备份（撤销上次切换）？')) return
+  try {
+    const r = await api('/api/restore', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+    alert('已恢复 ' + r.backup + ' → userid=' + (r.active?.userid || '?'))
+    refresh()
+  } catch (e) { alert('恢复失败: ' + e.message) }
+}
+
+$('btnRefresh').onclick = refresh
+refresh()
+setInterval(refresh, 3000)
+</script>
+</body>
+</html>

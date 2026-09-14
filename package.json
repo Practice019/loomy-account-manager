@@ -1,0 +1,17 @@
+{
+  "name": "loomy-account-manager",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Loomy 账号管理器：token 导入/导出、备份式无感切换本机 Loomy 登录账号",
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "loomy-manager": "./manager.mjs"
+  },
+  "scripts": {
+    "start": "node manager.mjs",
+    "web": "node server.mjs"
+  }
+}
