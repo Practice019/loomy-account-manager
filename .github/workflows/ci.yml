@@ -26,7 +26,7 @@ jobs:
     name: 前端（类型 + 构建）
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -57,7 +57,7 @@ jobs:
     name: 后端（格式 + lint + 测试）
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Tauri 在 Linux 上需要 WebKit 等系统库
       - name: 安装系统依赖
@@ -107,7 +107,7 @@ jobs:
     # 而那不该拦下与它无关的功能提交。它只是**提示**。
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
 
