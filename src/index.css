@@ -1,0 +1,1160 @@
+/**
+ * 全局样式与主题。
+ *
+ * # 抄的是 Kiro 的设计（hj01857655/kiro-account-manager）
+ *
+ * 三件事：
+ *
+ * 1. **玻璃拟态**（`.glass-sidebar` / `.glass-card`）—— 半透明背景 +
+ *    `backdrop-filter: blur()`。这是它视觉上"高级"的主要来源。
+ * 2. **主题用 CSS 变量 + `[data-theme]` 切换** —— 改一个属性全站换肤，
+ *    不需要重新渲染 React。
+ * 3. **侧栏可折叠**（192px ↔ 64px），用 `transition: width` 过渡。
+ *
+ * 与它的差别：它用 Tailwind 工具类 + shadcn/ui 组件；我这里手写 CSS ——
+ * 界面只有十几个组件，引一整套框架的构建复杂度大于收益。
+ * 但**设计语言与信息层级照抄**。
+ */
+
+/* ── 主题变量 ──────────────────────────────────────────────────────────── */
+
+:root {
+  --radius: 12px;
+
+  /* 语义色 */
+  --ok: #22c55e;
+  --warn: #f59e0b;
+  --err: #ef4444;
+}
+
+/* 浅色（默认） */
+[data-theme="light"],
+:root:not([data-theme]) {
+  color-scheme: light;
+  --bg: #f8fafc;
+  --bg-grad-1: #e2e8f0;
+  --bg-grad-2: #f1f5f9;
+  --surface-rgb: 255 255 255;
+  --surface-contrast-rgb: 248 250 252;
+  --glass-opacity: 0.85;
+  --glass-blur: 20px;
+  --fg: #0f172a;
+  --muted-fg: #64748b;
+  --border: #e2e8f0;
+  --primary: #3b82f6;
+  --primary-rgb: 59 130 246;
+  --primary-fg: #ffffff;
+  --shadow: 0 1px 3px rgb(15 23 42 / 0.06), 0 8px 24px rgb(15 23 42 / 0.04);
+}
+
+/* 深色 */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #09090b;
+  --bg-grad-1: #1e293b;
+  --bg-grad-2: #0f172a;
+  --surface-rgb: 13 14 24;
+  --surface-contrast-rgb: 6 8 16;
+  --glass-opacity: 0.72;
+  --glass-blur: 22px;
+  --fg: #f8fafc;
+  --muted-fg: #94a3b8;
+  --border: #1e293b;
+  --primary: #3b82f6;
+  --primary-rgb: 59 130 246;
+  --primary-fg: #ffffff;
+  --shadow: 0 1px 3px rgb(0 0 0 / 0.4), 0 8px 30px rgb(0 0 0 / 0.3);
+}
+
+/* 科技蓝 */
+[data-theme="tech"] {
+  color-scheme: dark;
+  --bg: #020617;
+  --bg-grad-1: #0c4a6e;
+  --bg-grad-2: #020617;
+  --surface-rgb: 15 23 42;
+  --surface-contrast-rgb: 2 6 23;
+  --glass-opacity: 0.72;
+  --glass-blur: 22px;
+  --fg: #ffffff;
+  --muted-fg: #cbd5e1;
+  --border: #1e3a5f;
+  --primary: #06b6d4;
+  --primary-rgb: 6 182 212;
+  --primary-fg: #04202a;
+  --shadow: 0 0 0 1px rgb(6 182 212 / 0.15), 0 8px 30px rgb(0 0 0 / 0.45);
+}
+
+/* 午夜 */
+[data-theme="midnight"] {
+  color-scheme: dark;
+  --bg: #000000;
+  --bg-grad-1: #1c1917;
+  --bg-grad-2: #000000;
+  --surface-rgb: 10 10 15;
+  --surface-contrast-rgb: 0 0 0;
+  --glass-opacity: 0.75;
+  --glass-blur: 22px;
+  --fg: #fafafa;
+  --muted-fg: #a1a1aa;
+  --border: #27272a;
+  --primary: #fbbf24;
+  --primary-rgb: 251 191 36;
+  --primary-fg: #1c1917;
+  --shadow: 0 8px 30px rgb(0 0 0 / 0.6);
+}
+
+/* 浅色系（共用结构，只换主色与背景） */
+[data-theme="purple"] {
+  --bg: #f5f3ff; --bg-grad-1: #ede9fe; --bg-grad-2: #faf5ff;
+  --primary: #7c3aed; --primary-rgb: 124 58 237;
+}
+[data-theme="ocean"] {
+  --bg: #f0f9ff; --bg-grad-1: #e0f2fe; --bg-grad-2: #f0f9ff;
+  --primary: #0284c7; --primary-rgb: 2 132 199;
+}
+[data-theme="forest"] {
+  --bg: #f0fdf4; --bg-grad-1: #dcfce7; --bg-grad-2: #f0fdf4;
+  --primary: #166534; --primary-rgb: 22 101 52;
+}
+[data-theme="sunset"] {
+  --bg: #fff7ed; --bg-grad-1: #ffedd5; --bg-grad-2: #fff7ed;
+  --primary: #ea580c; --primary-rgb: 234 88 12;
+}
+[data-theme="rose"] {
+  --bg: #fff1f2; --bg-grad-1: #ffe4e6; --bg-grad-2: #fff1f2;
+  --primary: #db2777; --primary-rgb: 219 39 119;
+}
+[data-theme="business"] {
+  --bg: #fffaf0; --bg-grad-1: #fef3c7; --bg-grad-2: #fffaf0;
+  --primary: #c28100; --primary-rgb: 194 129 0;
+}
+[data-theme="sakura"] {
+  --bg: #fff5f7; --bg-grad-1: #fce7f3; --bg-grad-2: #fff5f7;
+  --primary: #db2777; --primary-rgb: 219 39 119;
+}
+
+/* 浅色系共用的表面与文字（它们没在上面各自覆盖，用默认浅色）
+   —— 但需要覆盖 color-scheme，否则深色系统下表单控件会变深 */
+[data-theme="purple"],
+[data-theme="ocean"],
+[data-theme="forest"],
+[data-theme="sunset"],
+[data-theme="rose"],
+[data-theme="business"],
+[data-theme="sakura"] {
+  color-scheme: light;
+  --surface-rgb: 255 255 255;
+  --surface-contrast-rgb: 250 250 252;
+  --glass-opacity: 0.85;
+  --glass-blur: 20px;
+  --fg: #0f172a;
+  --muted-fg: #64748b;
+  --border: #e5e7eb;
+  --primary-fg: #ffffff;
+  --shadow: 0 1px 3px rgb(15 23 42 / 0.06), 0 8px 24px rgb(15 23 42 / 0.05);
+}
+
+/* ── 基础 ──────────────────────────────────────────────────────────────── */
+
+* {
+  box-sizing: border-box;
+  border-color: var(--border);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  /* 背景一层很淡的径向渐变 —— 纯色会显得"平"，这是 Kiro 的做法 */
+  background-image: radial-gradient(
+      1200px 600px at 12% -10%,
+      rgb(var(--primary-rgb) / 0.1),
+      transparent 60%
+    ),
+    radial-gradient(900px 500px at 100% 110%, rgb(var(--primary-rgb) / 0.07), transparent 60%);
+  background-attachment: fixed;
+  color: var(--fg);
+  font: 13.5px/1.6 "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  /* 桌面应用里选中文字通常是误触；只在明确可复制的地方开 */
+  user-select: none;
+}
+
+.mono,
+.selectable {
+  user-select: text;
+  cursor: text;
+}
+
+.mono {
+  font-family: ui-monospace, Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+  /* userid / session / 路径都是长串且无空格，不换行就会把容器撑破。
+     break-all 而不是 break-word：这类串本来就该在任意字符处断开。 */
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+
+/* 表格里的值不该撑破容器 */
+table {
+  table-layout: auto;
+}
+
+td,
+th {
+  overflow-wrap: anywhere;
+}
+
+/* ── 玻璃拟态 ──────────────────────────────────────────────────────────── */
+
+.glass-card {
+  background: rgb(var(--surface-rgb) / var(--glass-opacity));
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  transition: border-color 0.25s, background 0.25s, transform 0.2s;
+}
+
+.glass-card.hoverable:hover {
+  border-color: rgb(var(--primary-rgb) / 0.35);
+  background: rgb(var(--surface-rgb) / calc(var(--glass-opacity) + 0.06));
+}
+
+.glass-sidebar {
+  background: rgb(var(--surface-contrast-rgb) / 0.88);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border-right: 1px solid var(--border);
+}
+
+/* ── 应用骨架：侧栏 + 主区 ─────────────────────────────────────────────── */
+
+.app {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+  overflow: hidden;
+  /* 抄 Kiro：宽度过渡，折叠时有动画而不是突变 */
+  transition: width 0.2s ease-in-out;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 14px 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.sidebar-logo {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgb(var(--primary-rgb) / 0.9), rgb(var(--primary-rgb) / 0.55));
+  color: #fff;
+  font-weight: 700;
+  font-size: 19px;
+  transition: transform 0.2s;
+}
+
+.sidebar-brand:hover .sidebar-logo {
+  transform: scale(1.05);
+}
+
+.sidebar-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+}
+
+.sidebar-title .t1 {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--fg);
+  white-space: nowrap;
+}
+
+.sidebar-title .t2 {
+  font-size: 10.5px;
+  color: var(--muted-fg);
+  white-space: nowrap;
+}
+
+.sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 2px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  position: relative;
+  transition: background 0.15s, color 0.15s;
+}
+
+.nav-item:hover:not(.active) {
+  background: rgb(var(--primary-rgb) / 0.09);
+}
+
+.nav-item.active {
+  background: var(--primary);
+  color: var(--primary-fg);
+  font-weight: 600;
+}
+
+/* 激活项的左侧竖条（Kiro 的细节） */
+.nav-item.active::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 16px;
+  border-radius: 3px;
+  background: currentColor;
+  opacity: 0.8;
+}
+
+.nav-item .label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nav-item .count {
+  font-size: 11px;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebar-foot {
+  padding: 8px 12px 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sidebar-foot.between {
+  justify-content: space-between;
+}
+
+.icon-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted-fg);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.icon-btn:hover {
+  background: rgb(var(--primary-rgb) / 0.12);
+  color: var(--fg);
+}
+
+.sidebar-ver {
+  font-size: 10px;
+  color: var(--muted-fg);
+  font-family: ui-monospace, monospace;
+  letter-spacing: -0.02em;
+}
+
+/* 主内容区 */
+.main {
+  flex: 1;
+  overflow-y: auto;
+  /* min-width:0 必须写：flex 子项默认 min-width:auto，内容宽了会把
+     整个容器撑出去，表现为"右边被截断"（第一次跑就踩到了） */
+  min-width: 0;
+  overflow-x: hidden;
+  padding: 0;
+}
+
+.main-head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 22px;
+  background: rgb(var(--surface-rgb) / 0.6);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+
+.main-head h1 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.main-body {
+  padding: 20px 22px 30px;
+}
+
+/* ── 控件 ──────────────────────────────────────────────────────────────── */
+
+button {
+  font-family: inherit;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgb(var(--surface-rgb) / 0.7);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: rgb(var(--primary-rgb) / 0.5);
+  background: rgb(var(--surface-rgb) / 0.95);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn.primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-fg);
+  font-weight: 600;
+}
+
+.btn.primary:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.btn.danger {
+  color: var(--err);
+  border-color: rgb(239 68 68 / 0.35);
+}
+
+.btn.danger:hover:not(:disabled) {
+  background: rgb(239 68 68 / 0.12);
+}
+
+.btn.ghost {
+  background: transparent;
+  border-color: transparent;
+}
+
+.btn.ghost:hover:not(:disabled) {
+  background: rgb(var(--primary-rgb) / 0.1);
+  border-color: transparent;
+}
+
+.btn.sm {
+  padding: 3px 9px;
+  font-size: 11.5px;
+  border-radius: 7px;
+}
+
+input[type="text"],
+textarea,
+select {
+  background: rgb(var(--surface-rgb) / 0.6);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  border-radius: 8px;
+  padding: 8px 11px;
+  font-size: 13px;
+  font-family: inherit;
+  width: 100%;
+  user-select: text;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+input[type="text"]:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgb(var(--primary-rgb) / 0.15);
+}
+
+textarea {
+  resize: vertical;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+::placeholder {
+  color: var(--muted-fg);
+  opacity: 0.7;
+}
+
+/* ── 卡片 ──────────────────────────────────────────────────────────────── */
+
+.card {
+  background: rgb(var(--surface-rgb) / var(--glass-opacity));
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px;
+  margin-bottom: 16px;
+  /* min-width:0 + overflow:hidden：卡片里的长串（session / userid / 路径）
+     不该把卡片撑宽。没有这两行时，一张表格就能把整个网格挤出窗口。 */
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* 详情栏里最后一张卡片不要留多余下边距（否则 sticky 面板底部有空洞） */
+.acct-detail-aside > .card:last-child {
+  margin-bottom: 0;
+}
+
+.card > h2 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card > h2 .hint {
+  font-weight: 400;
+  color: var(--muted-fg);
+  font-size: 12px;
+}
+
+/* ── 统计块 ────────────────────────────────────────────────────────────── */
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.stat {
+  background: rgb(var(--surface-rgb) / 0.55);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 13px 15px;
+  transition: border-color 0.2s;
+}
+
+.stat:hover {
+  border-color: rgb(var(--primary-rgb) / 0.3);
+}
+
+.stat .lbl {
+  font-size: 11.5px;
+  color: var(--muted-fg);
+  margin-bottom: 5px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.stat .val {
+  font-size: 24px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.stat .val.accent {
+  color: var(--primary);
+}
+
+/* 两列统计（用类而不是内联 gridTemplateColumns：
+   内联值会覆盖这里的 minmax(0,1fr)，让网格项退回 min-width:auto） */
+.stats-2 {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.stat {
+  /* 网格项默认 min-width:auto —— 里面的长数字/长串会撑宽轨道 */
+  min-width: 0;
+}
+
+/* ── 账号网格（抄 Kiro 的卡片网格）─────────────────────────────────────── */
+
+/* 右侧详情栏：**始终固定在右边**，不随窗口变窄掉到下面去。
+ *
+ * 之前的写法有个 1180px 的断点，窄于此就 `flex-direction: column` ——
+ * 结果是"详情面板被挤到卡片网格下方"。用户明确要求它固定在右边。
+ *
+ * 现在不再换行。窄窗口下的处理是：
+ *   - 详情栏按断点收窄（380 → 330 → 300）
+ *   - 卡片网格的 auto-fill 轨道变少，卡片自己变窄（有 min-width:0 + overflow:hidden 兜底）
+ * 这样"信息架构"（列表 + 固定详情）在任何宽度下都保持一致，只是密度变化。
+ *
+ * `position: sticky` 让它在滚动卡片网格时**跟着一起停住**，
+ * 不用滚回顶部才能看到详情。 */
+.acct-split {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.acct-detail-aside {
+  width: 380px;
+  flex-shrink: 0;
+  position: sticky;
+  /* 顶部粘住时要避开页头（.main-head 约 54px + 一点间距） */
+  top: 0;
+  /* 面板自身可能比视口高（三个子标签内容都不短），让它自己滚 */
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  /* 滚动时不要让内容贴边 */
+  padding-right: 2px;
+}
+
+@media (max-width: 1280px) {
+  .acct-detail-aside {
+    width: 330px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .acct-detail-aside {
+    width: 300px;
+  }
+}
+
+.acct-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  /* 同 .main / .grid-2：网格容器也要 min-width:0，
+     否则它自己不肯收缩，子项再设置也没用 */
+  min-width: 0;
+}
+
+.acct-card {
+  background: rgb(var(--surface-rgb) / var(--glass-opacity));
+  backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  cursor: pointer;
+  position: relative;
+  transition: border-color 0.2s, transform 0.15s, box-shadow 0.2s;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  /* 网格项同样默认 min-width:auto —— 卡片里的长串（手机号/userid）
+     会把整个轨道撑宽，把右侧详情面板挤出窗口。第三次踩这个坑。 */
+  min-width: 0;
+  overflow: hidden;
+}
+
+.acct-card:hover {
+  border-color: rgb(var(--primary-rgb) / 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.12);
+}
+
+.acct-card.active {
+  border-color: var(--ok);
+}
+
+.acct-card.selected {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgb(var(--primary-rgb) / 0.25);
+}
+
+.acct-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.acct-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 15px;
+  color: #fff;
+  text-transform: uppercase;
+}
+
+.acct-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.acct-name .n {
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.acct-name .s {
+  font-size: 11.5px;
+  color: var(--muted-fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.acct-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.tag {
+  font-size: 10.5px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgb(var(--primary-rgb) / 0.12);
+  color: var(--primary);
+  border: 1px solid rgb(var(--primary-rgb) / 0.2);
+}
+
+.tag.ok {
+  background: rgb(34 197 94 / 0.12);
+  color: var(--ok);
+  border-color: rgb(34 197 94 / 0.25);
+}
+
+.tag.dim {
+  background: rgb(var(--muted-fg) / 0.1);
+  color: var(--muted-fg);
+  border-color: transparent;
+}
+
+.acct-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* ── 任务列表 ──────────────────────────────────────────────────────────── */
+
+.task-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgb(var(--border) / 0.6);
+}
+
+.task-row:last-child {
+  border-bottom: none;
+}
+
+.task-row .mk {
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+.task-row .nm {
+  flex: 1;
+  font-size: 13px;
+}
+
+.task-row .pt {
+  color: var(--muted-fg);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+/* 进度条 */
+.bar {
+  height: 6px;
+  border-radius: 4px;
+  background: rgb(var(--muted-fg) / 0.18);
+  overflow: hidden;
+}
+
+.bar > i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--primary);
+  transition: width 0.4s ease;
+}
+
+.bar.ok > i {
+  background: var(--ok);
+}
+
+/* ── 提示条 ────────────────────────────────────────────────────────────── */
+
+.alert {
+  border-radius: 10px;
+  padding: 12px 15px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  border: 1px solid;
+  line-height: 1.7;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.alert .ico {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.alert .body {
+  flex: 1;
+  white-space: pre-wrap;
+}
+
+.alert.info {
+  background: rgb(59 130 246 / 0.1);
+  border-color: rgb(59 130 246 / 0.3);
+  color: rgb(var(--primary-rgb));
+}
+
+.alert.ok {
+  background: rgb(34 197 94 / 0.1);
+  border-color: rgb(34 197 94 / 0.3);
+  color: #16a34a;
+}
+
+.alert.warn {
+  background: rgb(245 158 11 / 0.1);
+  border-color: rgb(245 158 11 / 0.32);
+  color: #d97706;
+}
+
+.alert.err {
+  background: rgb(239 68 68 / 0.1);
+  border-color: rgb(239 68 68 / 0.32);
+  color: #dc2626;
+}
+
+[data-theme="dark"] .alert.ok,
+[data-theme="tech"] .alert.ok,
+[data-theme="midnight"] .alert.ok {
+  color: #4ade80;
+}
+[data-theme="dark"] .alert.warn,
+[data-theme="tech"] .alert.warn,
+[data-theme="midnight"] .alert.warn {
+  color: #fbbf24;
+}
+[data-theme="dark"] .alert.err,
+[data-theme="tech"] .alert.err,
+[data-theme="midnight"] .alert.err {
+  color: #f87171;
+}
+[data-theme="dark"] .alert.info,
+[data-theme="tech"] .alert.info,
+[data-theme="midnight"] .alert.info {
+  color: #7dd3fc;
+}
+
+/* ── 徽标 ──────────────────────────────────────────────────────────────── */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border-radius: 20px;
+  font-size: 11px;
+  background: rgb(var(--muted-fg) / 0.14);
+  color: var(--muted-fg);
+  white-space: nowrap;
+}
+
+.badge.on {
+  background: rgb(34 197 94 / 0.15);
+  color: #16a34a;
+}
+
+.badge.off {
+  background: rgb(239 68 68 / 0.15);
+  color: #dc2626;
+}
+
+[data-theme="dark"] .badge.on,
+[data-theme="tech"] .badge.on,
+[data-theme="midnight"] .badge.on {
+  color: #4ade80;
+}
+[data-theme="dark"] .badge.off,
+[data-theme="tech"] .badge.off,
+[data-theme="midnight"] .badge.off {
+  color: #f87171;
+}
+
+/* 呼吸点（Kiro 的"已连接"指示） */
+.pulse {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+}
+
+.pulse::before,
+.pulse::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
+.pulse::after {
+  animation: pulse-ring 1.8s ease-out infinite;
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+/* ── 表格 ──────────────────────────────────────────────────────────────── */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+th {
+  text-align: left;
+  color: var(--muted-fg);
+  font-weight: 500;
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11.5px;
+}
+
+td {
+  padding: 8px 9px;
+  border-bottom: 1px solid rgb(var(--border) / 0.55);
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+/* ── 其它 ──────────────────────────────────────────────────────────────── */
+
+.empty {
+  padding: 34px 16px;
+  text-align: center;
+  color: var(--muted-fg);
+  font-size: 13px;
+}
+
+.dim {
+  color: var(--muted-fg);
+}
+
+.ok {
+  color: var(--ok);
+}
+
+.warn {
+  color: var(--warn);
+}
+
+.err {
+  color: var(--err);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.row.between {
+  justify-content: space-between;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.grid-2 {
+  display: grid;
+  /* minmax(0,1fr) 而不是 1fr —— 网格列和 flex 子项一样默认 min-width:auto，
+     里面放一张表格就会把列撑到内容宽度，把第二列挤出屏幕外。
+     第一次跑就是这个现象：右边「额度」卡被窗口边缘截断。 */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+}
+
+@media (max-width: 900px) {
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.spin {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--muted-fg);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: -2px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.fade-in {
+  animation: fade-in 0.25s ease both;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* 主题网格（设置页） */
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 10px;
+}
+
+.theme-cell {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px;
+  cursor: pointer;
+  background: rgb(var(--surface-rgb) / 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  align-items: center;
+  transition: border-color 0.2s, transform 0.12s;
+}
+
+.theme-cell:hover {
+  border-color: rgb(var(--primary-rgb) / 0.45);
+  transform: translateY(-1px);
+}
+
+.theme-cell.on {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgb(var(--primary-rgb) / 0.2);
+}
+
+.theme-swatch {
+  width: 100%;
+  height: 34px;
+  border-radius: 7px;
+}
+
+.theme-cell .tn {
+  font-size: 11.5px;
+  text-align: center;
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--muted-fg) / 0.35);
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--muted-fg) / 0.55);
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
