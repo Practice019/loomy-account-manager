@@ -1,0 +1,65 @@
+[package]
+name = "loomy-account-manager"
+version = "2.0.0"
+description = "Loomy 账号管理器 —— 导入、切换、余额与任务"
+authors = ["loomy-account-manager contributors"]
+edition = "2021"
+# 最低支持的 Rust 版本。
+#
+# ⚠ 这个数字必须与依赖的真实要求一致，否则声明的 MSRV 是**假的** ——
+# 有人按它装工具链会编译失败，而错误信息（某个 API "stable since 1.82"）
+# 不会告诉他真正的原因是 Cargo.toml 写错了。
+#
+# 实测：
+#   - `tauri 2.12.1` 自己的 `rust-version = "1.90"`（它是最高的那个）
+#   - 我们代码里用了 `Option::is_none_or`（1.82 起稳定）
+#
+# 所以取 1.90。`cargo clippy` 的 `incompatible_msrv` 检查会守住这条。
+rust-version = "1.90"
+
+[lib]
+# Tauri 2 要求 cdylib + rlib（移动端用 cdylib，桌面用 rlib）
+name = "loomy_account_manager_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# HTTP：查余额/任务/邀请码（Loomy 官方积分网关）
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+# 异步运行时（Tauri 2 自带 async runtime，但我们需要 spawn 用于后台任务）
+tokio = { version = "1", features = ["sync", "time", "macros", "rt-multi-thread"] }
+
+# LevelDB 写入需要的 CRC32C（Castagnoli）
+crc32c = "0.6"
+
+# 时间戳
+chrono = { version = "0.4", features = ["serde"] }
+
+# 错误处理
+thiserror = "2"
+
+# 单一实例（防多开，抄 Kiro 的设计）
+tauri-plugin-single-instance = "2"
+
+[target.'cfg(windows)'.dependencies]
+# 隐藏子进程窗口（taskkill / tasklist）
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+] }
+# 从注册表读 Loomy 的安装位置（比硬编码 exe 路径可靠）
+winreg = "0.52"
+
+[features]
+# 由 tauri-build 在 dev 时注入
+default = []

@@ -1,0 +1,57 @@
+# 统一行尾，避免跨平台协作时产生无意义的整文件 diff。
+#
+# 背景：Windows 上 git 默认 `core.autocrlf=true`，会把仓库里的 LF
+# 在工作区转成 CRLF、提交时再转回 LF。看起来无害，但两个后果：
+#
+#   1. `cargo fmt --check` 在本地读的是 CRLF 文件，而 CI（Linux）读的是 LF ——
+#      同一次提交可能本地过、CI 挂（或反过来）。
+#   2. 任何"顺手格式化"的改动都会变成整个文件的 diff，真正的改动被淹没。
+#
+# 所以显式规定：**仓库里一律 LF**。
+
+# 默认：自动按文本处理，仓库内统一 LF
+* text=auto eol=lf
+
+# 明确这些是文本
+*.rs        text eol=lf
+*.toml      text eol=lf
+*.ts        text eol=lf
+*.tsx       text eol=lf
+*.js        text eol=lf
+*.mjs       text eol=lf
+*.json      text eol=lf
+*.css       text eol=lf
+*.html      text eol=lf
+*.md        text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.ps1       text eol=lf
+*.mjs       text eol=lf
+
+# 锁文件：虽然是人读的文本，但由工具生成，
+# 标记为生成的以减少 diff 噪音
+bun.lock            -diff
+src-tauri/Cargo.lock -diff
+
+# 二进制：不要做任何转换（图标被破坏会很难查）
+*.png       binary
+*.ico       binary
+*.icns      binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.webp      binary
+*.woff      binary
+*.woff2     binary
+*.ttf       binary
+*.zip       binary
+*.gz        binary
+*.exe       binary
+*.msi       binary
+*.dll       binary
+*.so        binary
+*.dylib     binary
+
+# 打包产物（万一被误提交也不要 diff）
+src-tauri/target/** -diff
+dist/**             -diff
