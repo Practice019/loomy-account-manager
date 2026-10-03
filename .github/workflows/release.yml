@@ -1,0 +1,150 @@
+name: Release
+
+# 推送 `v*` 标签时触发构建与发布。
+#
+# ```bash
+# git tag -a v2.0.0 -m "Release 2.0.0"
+# git push origin v2.0.0
+# ```
+#
+# 用**标签**而不是分支触发：发布是一个不可变的历史点，
+# 而分支会移动 —— 用分支触发的话，同一个 workflow 可能在不同时间
+# 从不同的提交产出"同一个版本"，那个版本号就不再是承诺了。
+on:
+  push:
+    tags:
+      - "v*"
+  # 允许不打标签先试跑一次（只构建不发布）
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "只构建，不创建 Release"
+        type: boolean
+        default: true
+
+# 发布需要写权限（创建 Release、上传产物）
+permissions:
+  contents: write
+
+jobs:
+  # ── 构建并发布 ──────────────────────────────────────────────────────────
+  build:
+    name: 构建 ${{ matrix.label }}
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      # 一个平台失败不影响其它平台 —— 全部跑完再判断，
+      # 这样一次就能看到所有平台的结果，而不是修一个跑一次
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            label: Windows x64
+            args: ""
+            artifact: windows-x64
+          - platform: macos-latest
+            label: macOS Apple Silicon
+            args: "--target aarch64-apple-darwin"
+            artifact: macos-aarch64
+          - platform: macos-latest
+            label: macOS Intel
+            args: "--target x86_64-apple-darwin"
+            artifact: macos-x64
+          - platform: ubuntu-22.04
+            label: Linux x64
+            args: ""
+            artifact: linux-x64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Linux 系统依赖（Tauri 需要 WebKit 与打包工具）──────────────
+      - name: 安装系统依赖（仅 Linux）
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            xdg-utils \
+            libssl-dev
+
+      # ── 前端工具链 ─────────────────────────────────────────────────
+      # 项目用 bun（有 bun.lock）。不用 setup-node 是因为 lockfile 是 bun 的，
+      # 用 npm ci 会失败。
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # ── Rust ──────────────────────────────────────────────────────
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          # macOS 要交叉编译两个架构，只有那边需要指定 target
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # ── 依赖 ──────────────────────────────────────────────────────
+      - name: 安装前端依赖
+        run: bun install --frozen-lockfile
+
+      # ── 构建 + 发布 ───────────────────────────────────────────────
+      # `tauri-action` 负责：跑 `tauri build`、生成各平台安装包、
+      # 创建或更新对应标签的 Release、上传产物。
+      #
+      # `__VERSION__` 会被替换成 `tauri.conf.json` 里的版本号 —— 版本号
+      # 只有一个来源，不会出现"标签是 2.0.0 而产物是 1.0.0"的情况。
+      - name: 构建并发布
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
+          releaseName: "Loomy 账号管理器 v__VERSION__"
+          releaseBody: |
+            详见 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)。
+
+            ## 下载
+
+            | 平台 | 文件 |
+            |---|---|
+            | Windows x64 | `.msi` 或 `.exe` |
+            | macOS（Apple Silicon） | `.dmg`（aarch64） |
+            | macOS（Intel） | `.dmg`（x64） |
+            | Linux x64 | `.AppImage` / `.deb` / `.rpm` |
+
+            Windows 需要 [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) 运行时
+            （Win11 已内置，Win10 一般也有；安装包会自动处理）。
+
+            > macOS 与 Linux 版本未做代码签名，首次打开可能需要在系统设置里放行。
+
+            ## 数据安全
+
+            除查询余额 / 任务 / 邀请码时调用 Loomy 官方接口外，全部为本地文件操作。
+            账号库在 `%APPDATA%\\LoomyAccountManager\\`（Windows）。
+          # 手动触发时保持草稿（先看构建结果再决定是否发布）
+          releaseDraft: ${{ github.event_name == 'workflow_dispatch' }}
+          prerelease: false
+          args: ${{ matrix.args }}
+
+      # ── 产物留存 ──────────────────────────────────────────────────
+      # 即便发布失败，也把安装包留成可下载的 artifact，便于排查。
+      # GitHub Release 的资产在发布成功后才有，artifact 在构建结束就有。
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundles-${{ matrix.artifact }}
+          # 只取安装包，不要中间的 .rlib/.d 之类
+          path: |
+            src-tauri/target/**/release/bundle/*.msi
+            src-tauri/target/**/release/bundle/*.exe
+            src-tauri/target/**/release/bundle/*.dmg
+            src-tauri/target/**/release/bundle/*.app.tar.gz
+            src-tauri/target/**/release/bundle/*.AppImage
+            src-tauri/target/**/release/bundle/*.deb
+            src-tauri/target/**/release/bundle/*.rpm
+          if-no-files-found: warn
+          retention-days: 14

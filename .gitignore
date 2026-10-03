@@ -1,0 +1,23 @@
+# ── 前端 ──
+node_modules/
+dist/
+*.local
+.vite/
+
+# ── Rust / Tauri ──
+src-tauri/target/
+src-tauri/gen/
+
+# ── 运行时数据（**绝不入库**：含 session）──
+data/
+backups/
+tokens/
+managed-accounts.json
+
+# ── 编辑器 / 系统 ──
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.log

@@ -1,0 +1,80 @@
+name: Bug 报告
+description: 报告一个问题
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。请尽量填全 —— 缺信息的问题往往要来回好几轮才能定位。
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: 在应用的侧栏底部能看到（形如 v2.0.0）
+      placeholder: v2.0.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: 系统
+      options:
+        - Windows 11
+        - Windows 10
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Linux
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      description: 实际看到的现象。有截图更好。
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 你期望发生什么
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 打开…
+        2. 点击…
+        3. 出现…
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志 / 报错信息
+      description: |
+        应用会把错误显示在界面顶部的提示条里，可以直接复制。
+        如果是构建/开发相关的问题，请贴上完整的命令输出。
+      render: shell
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 确认
+      options:
+        - label: 我已搜索过现有 issue，没有重复
+          required: true
+        - label: 涉及切换账号时，我已**完全退出 Loomy** 再操作
+          required: false
+        - label: 我贴出的内容**不含真实账号数据**（手机号 / userid / session / 邀请码）
+          required: true

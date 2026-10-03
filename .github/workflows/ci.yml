@@ -1,0 +1,123 @@
+name: CI
+
+# 每个 PR 和每次推送到 main 都跑。
+# 目标：不让任何未通过门禁的改动进入 main。
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # 允许手动触发（排查 CI 问题时有用）
+  workflow_dispatch:
+
+# 同一分支的旧运行不必继续 —— 新推送会取代它
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # 让警告不至于拖慢构建；实际门禁靠 clippy 的 -D warnings
+  RUSTFLAGS: -D warnings
+
+jobs:
+  # ── 前端 ────────────────────────────────────────────────────────────────
+  frontend:
+    name: 前端（类型 + 构建）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: 安装依赖
+        run: bun install --frozen-lockfile
+
+      - name: 类型检查
+        run: bun x tsc --noEmit
+
+      - name: 构建
+        run: bun run build
+
+      - name: 确认产物里没有开发工具残留
+        # measure.html 是布局测量台（开发工具），**故意**不进 build 入口。
+        # 万一有人改错了 vite 配置，这条会红。
+        run: |
+          if [ -e dist/measure.html ]; then
+            echo "::error::dist/ 里出现了 measure.html —— 开发工具不该进产物"
+            exit 1
+          fi
+          echo "dist/ 内容："
+          ls -la dist/
+
+  # ── 后端 ────────────────────────────────────────────────────────────────
+  backend:
+    name: 后端（格式 + lint + 测试）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Tauri 在 Linux 上需要 WebKit 等系统库
+      - name: 安装系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            build-essential \
+            curl \
+            wget \
+            file
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: 格式检查
+        working-directory: src-tauri
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        # `-D warnings` 让警告变错误。这条同时守住 MSRV：
+        # 用到了高于 Cargo.toml 声明版本才稳定的 API 会在这里暴露。
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: 测试
+        # ⚠ 集成测试会**读**真实 Loomy 环境（只读，安全）。
+        # CI runner 上没有 Loomy，那些测试会自行跳过而不是失败 ——
+        # 这是有意的设计，让没装 Loomy 的机器也能跑。
+        working-directory: src-tauri
+        run: cargo test --all-features
+
+  # ── 供应链 ──────────────────────────────────────────────────────────────
+  audit:
+    name: 依赖安全审计
+    runs-on: ubuntu-latest
+    # 审计失败不阻塞合并：新披露的漏洞通常需要升级依赖才能修，
+    # 而那不该拦下与它无关的功能提交。它只是**提示**。
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: cargo audit
+        run: |
+          cargo install cargo-audit --locked || true
+          cd src-tauri && cargo audit
+
+      - uses: oven-sh/setup-bun@v2
+      - name: npm 审计
+        run: |
+          bun install --frozen-lockfile
+          bun audit || true

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>布局测量台</title>
+  </head>
+  <body>
+    <!--
+      布局测量台（开发工具）—— 不在 build 入口里，不会进安装包。
+
+      用法：
+        bun run dev
+        浏览器打开 http://localhost:1420/measure.html
+
+      参数：
+        ?nooverlay=1        只渲染界面，不盖测量浮层（截图用）
+        &page=accounts      直接停到某一页（dashboard/accounts/import/settings）
+
+      它量的是"横向溢出"（scrollWidth > clientWidth）。这个问题看截图不可靠 ——
+      内容溢出到窗口外时截图只显示"那块没画完"，很容易误判。改成数值就确定了。
+    -->
+    <div id="root"></div>
+    <script type="module" src="/src/__measure.ts"></script>
+  </body>
+</html>

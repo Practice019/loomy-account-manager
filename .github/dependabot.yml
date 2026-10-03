@@ -1,0 +1,61 @@
+# 依赖自动更新
+#
+# 每周检查一次，把新版本开成 PR —— CI 会替我们验证能不能升。
+# 不自动合并：依赖升级偶尔会带来行为变化，需要人看一眼。
+version: 2
+updates:
+  # 前端
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      # React 生态一起升 —— 分开升容易出现版本互不兼容的中间态
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+      # 构建工具一起升
+      build:
+        patterns:
+          - "vite"
+          - "@vitejs/plugin-react"
+          - "typescript"
+          - "@tauri-apps/cli"
+
+  # Rust 后端
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      # Tauri 全家桶必须同进同退：tauri 与 tauri-build / 插件之间
+      # 有版本约束，单独升一个会编译不过
+      tauri:
+        patterns:
+          - "tauri"
+          - "tauri-build"
+          - "tauri-plugin-*"
+      # windows-sys 各版本之间 API 变动频繁，一组升
+      windows:
+        patterns:
+          - "windows-sys"
+          - "winreg"
+
+  # GitHub Actions 自身
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "chore(ci)"
