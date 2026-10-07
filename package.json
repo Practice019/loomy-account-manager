@@ -1,7 +1,7 @@
 {
   "name": "loomy-account-manager",
   "private": true,
-  "version": "2.0.1",
+  "version": "2.0.2",
   "type": "module",
   "description": "Loomy 账号管理器 —— 导入、切换、余额与任务（Tauri 桌面应用）",
   "scripts": {

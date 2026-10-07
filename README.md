@@ -243,6 +243,7 @@ cargo test --test e2e_switch -- --ignored       # 真的切账号（需先关闭
 cd src-tauri
 cargo run --example seed -- "<含账号 JSON 的目录>"   # 批量导入
 cargo run --example probe_points                      # 实测余额 / 任务 / 邀请码
+cargo run --example probe_points -- <uid> bind-check  # 校验绑定请求体形状（非破坏性）
 cargo run --example probe_status                      # 打印真实环境路径
 cargo run --example probe_ipc                         # 验证发往前端的 JSON 形状
 

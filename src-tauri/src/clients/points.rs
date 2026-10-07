@@ -23,8 +23,8 @@
 //! GET  /onboarding/tasks                     新手任务进度
 //! POST /onboarding/tasks/complete           完成一个任务 {key}
 //! GET  /points/activation                    激活状态（用了谁的邀请码）
-//! POST /points/activation                    绑定邀请码 {invitationCode}
-//! POST /points/first-login                   首登奖励
+//! POST /points/activation                    绑定邀请码 {inviteCode, deviceId}
+//! POST /points/first-login                   首登奖励 {deviceId}
 //! GET  /invitation-codes                     我生成的邀请码
 //! ```
 
@@ -272,7 +272,7 @@ pub async fn complete_task(
 
 // ── 邀请码 ────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ActivationState {
     /// 是否已激活（绑定过邀请码）
@@ -281,10 +281,18 @@ pub struct ActivationState {
     /// 绑定的邀请码。上游叫 `appliedInvitationCode`，前端期望 `appliedCode`。
     /// 同 `InviteCode::code`：两个方向分开指定。
     #[serde(rename(deserialize = "appliedInvitationCode", serialize = "appliedCode"))]
+    #[serde(default)]
     pub applied_code: String,
 }
 
 /// 查激活状态。
+///
+/// # 为什么要在两层里找 `activated`
+///
+/// 回执可能是 `{"activated":…}`，也可能多包一层 `{"data":{"activated":…}}`
+/// （上游有 v2 风格的外层包装先例，见 `my_invite_codes`）。
+/// 只在第一层找的话，遇到包装过的那种会**静默**退化成"未激活" —— 于是
+/// 界面显示"未激活"，而账号其实已经激活了，用户会以为绑定失败。
 pub async fn activation(http: &reqwest::Client, session: &str) -> Result<ActivationState> {
     let data = call(
         http,
@@ -294,34 +302,144 @@ pub async fn activation(http: &reqwest::Client, session: &str) -> Result<Activat
         None,
     )
     .await?;
-    Ok(serde_json::from_value(data).unwrap_or(ActivationState {
-        activated: false,
-        applied_code: String::new(),
-    }))
+
+    for layer in [Some(data.clone()), nested_data(&data)] {
+        let Some(layer) = layer else { continue };
+        // 用 Option 承接 `activated`，才能区分"字段存在且为 false"
+        // 与"字段不存在"（前者是答案，后者说明要找下一层）。
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Probe {
+            #[serde(default)]
+            activated: Option<bool>,
+            #[serde(default, rename = "appliedInvitationCode")]
+            applied_code: String,
+        }
+        let Ok(p) = serde_json::from_value::<Probe>(layer) else {
+            continue;
+        };
+        if let Some(activated) = p.activated {
+            return Ok(ActivationState {
+                activated,
+                applied_code: p.applied_code,
+            });
+        }
+    }
+    // 回执里没有 activated 字段（老账号/异常回执）：当作未激活，不报错。
+    Ok(ActivationState::default())
+}
+
+/// 取 `{"data":{…}}` 里那一层；没有就返回 `None`。
+///
+/// 上游部分端点在 v2 风格下会多包一层，两种形状都要认。
+fn nested_data(v: &serde_json::Value) -> Option<serde_json::Value> {
+    let inner = v.get("data")?;
+    if inner.is_null() {
+        return None;
+    }
+    Some(inner.clone())
+}
+
+/// 绑邀请码时上游要求的设备标识（协议要求，见 `device_id`）。
+///
+/// 客户端（Loomy 自己）用 `loomy-campus-<uuid>` 这个形状。它**只用于风控归因**，
+/// 不参与鉴权；所以不复用同一个值 —— 复用会让多个账号被上游识别成同一台设备。
+const DEVICE_PREFIX: &str = "loomy-campus-";
+
+/// 生成一个新的 deviceId。
+fn new_device_id() -> String {
+    format!("{DEVICE_PREFIX}{}", uuid::Uuid::new_v4())
+}
+
+/// 绑定邀请码的请求体。
+///
+/// 抽成函数是为了让 `bind_payload_uses_upstream_field_names` 能钉住字段名 ——
+/// 这个字段名写错时上游只回一句笼统的 `100001 请求参数错误`，
+/// 不会说"你字段名错了"，现象是"绑定不了"（真踩过）。
+fn bind_payload(code: &str) -> serde_json::Value {
+    serde_json::json!({
+        "inviteCode": code,
+        "deviceId": new_device_id(),
+    })
+}
+
+/// 把绑定邀请码的上游错误翻译成人话。
+///
+/// # 为什么需要翻译
+///
+/// 上游错误码对用户毫无意义 —— 三种失败原因（自绑 / 抄错 / 已用过）
+/// 分别回 `100001`/`200002`/`200003`，光看数字和那句笼统的 desc
+/// 完全看不出"码为什么不行"，用户会以为是自己操作错了或者程序有 bug。
+///
+/// 实测错误码：
+///
+/// ```text
+/// 100001  请求参数错误  —— 自绑（拿自己生成的码绑自己）
+/// 200002  邀请码不存在  —— 抄错 / 多复制了字符
+/// 200003  邀请码不可用  —— 已用过（maxUses=1）/ 已失效
+/// ```
+///
+/// 未命中时保留原文，并补一句通用提示（界面不该只有一行晦涩报错）。
+fn translate_bind_error(e: Error) -> Error {
+    let raw = e.to_string();
+    const HINT: &str = "请确认用的是其它账号「我生成的邀请码」里可用的码，且该码还没被用过。";
+    let friendly = if raw.contains("100001") {
+        Some(format!("不能绑定自己账号生成的邀请码。{HINT}"))
+    } else if raw.contains("200002") {
+        Some(format!(
+            "邀请码不存在：可能抄错了字符或多复制了内容。{HINT}"
+        ))
+    } else if raw.contains("200003") {
+        Some(format!("邀请码不可用：已被使用或已失效。{HINT}"))
+    } else {
+        None
+    };
+    match friendly {
+        Some(msg) => Error::Other(msg),
+        None => Error::Other(format!("{raw} —— {HINT}")),
+    }
 }
 
 /// 绑定邀请码。
 ///
-/// # 错误码（上游给的，原样透出给用户）
+/// # 请求体字段名是 `inviteCode`，不是 `invitationCode`
+///
+/// 这里踩过一个坑：第一版发的是 `{"invitationCode": code}` —— 读起来更"对"
+/// （上游**读**激活状态时返回的字段确实叫 `appliedInvitationCode`），
+/// 但**写**接口不认这个名字。实测：
 ///
 /// ```text
-/// 100001  请求参数错误（码格式不对，或**绑自己的码**）
-/// 200002  邀请码不存在
-/// 200003  邀请码不可用（已被用掉/过期）
+/// {"invitationCode":"ZZZZZZ"}                  -> 100001 请求参数错误
+/// {"inviteCode":"ZZZZZZ","deviceId":"..."}    -> 000000 成功
 /// ```
+///
+/// 读接口与写接口的字段名**不一致**，而错的那一侧只会得到一个笼统的
+/// `100001 请求参数错误`，不会说"字段名错了" —— 于是现象是"绑定不了"。
+///
+/// `deviceId` 是协议要求的（客户端会带）。实测省略它服务端**也**接受，
+/// 但为与官方客户端一致、并让风控归因正确，这里照带上。
 pub async fn bind_invite(http: &reqwest::Client, session: &str, code: &str) -> Result<()> {
     let code = code.trim().to_uppercase();
     if code.is_empty() {
         return Err(Error::Invalid("邀请码为空".into()));
+    }
+    // 长度只做**粗**校验：实测是 6 位，但不按"必须 6 位"硬拒 ——
+    // 上游才是权威，将来码变长时这里会误杀。明显不对的长度（1 位 / 50 位）
+    // 交给上游回 200002。
+    if code.len() < 4 || code.len() > 32 {
+        return Err(Error::Invalid(
+            "邀请码长度不对（实测 6 位，形如 E3HRN8）".into(),
+        ));
     }
     call(
         http,
         session,
         reqwest::Method::POST,
         "/points/activation",
-        Some(serde_json::json!({ "invitationCode": code })),
+        Some(bind_payload(&code)),
     )
-    .await?;
+    .await
+    .map_err(translate_bind_error)?;
     Ok(())
 }
 
@@ -338,7 +456,10 @@ pub struct InviteCode {
     ///
     /// 所以两个方向**分开指定**：收用上游名，发用前端名。
     /// `serialized_keys_match_frontend_expectations` 钉住这一点。
+    ///
+    /// 反序列化同时接受 `code`（上游换过名，两种都见过）。
     #[serde(rename(deserialize = "inviteCode", serialize = "code"))]
+    #[serde(alias = "code")]
     pub code: String,
     #[serde(default, rename = "usedCount")]
     pub used_count: i64,
@@ -354,6 +475,17 @@ pub struct InviteCode {
 }
 
 /// 查我生成的邀请码（别人用我的码，我能拿奖励）。
+///
+/// # 形状兼容三种（实测是第一种，其余为防御）
+///
+/// ```text
+/// {"list":[{inviteCode,…}]}       ← 当前实测
+/// {"data":{"list":[…]}}           ← v2 风格的外层包装
+/// [{…}] 或 ["ABC123"]             ← 裸数组 / 纯字符串元素
+/// ```
+///
+/// 只认第一种的话，上游换包装时会**静默**返回空列表 —— 界面显示"没有邀请码"，
+/// 而接口其实明明返回了。这与 `activation` 的两层查找是同一类防御。
 pub async fn my_invite_codes(http: &reqwest::Client, session: &str) -> Result<Vec<InviteCode>> {
     let data = call(
         http,
@@ -363,25 +495,69 @@ pub async fn my_invite_codes(http: &reqwest::Client, session: &str) -> Result<Ve
         None,
     )
     .await?;
-    Ok(data
-        .get("list")
-        .and_then(|l| l.as_array())
-        .map(|a| {
-            a.iter()
-                .filter_map(|v| serde_json::from_value::<InviteCode>(v.clone()).ok())
-                .collect()
+
+    let list = extract_invite_list(&data);
+
+    Ok(list
+        .iter()
+        .filter_map(|v| {
+            // 元素可能是纯字符串（"ABC123"），也可能是个对象。
+            if let Some(s) = v.as_str() {
+                let s = s.trim();
+                if s.is_empty() {
+                    return None;
+                }
+                return Some(InviteCode {
+                    code: s.to_string(),
+                    used_count: 0,
+                    max_uses: 1,
+                    status: "active".into(),
+                });
+            }
+            serde_json::from_value::<InviteCode>(v.clone()).ok()
         })
-        .unwrap_or_default())
+        .collect())
+}
+
+/// 从三种可能的形状里取出「邀请码」那一列元素。
+///
+/// ```text
+/// {"list":[…]}          ← 当前实测
+/// {"data":{"list":[…]}} ← v2 风格外层包装
+/// […]                   ← 裸数组
+/// ```
+fn extract_invite_list(data: &serde_json::Value) -> Vec<serde_json::Value> {
+    let inner = nested_data(data);
+    data.get("list")
+        .and_then(|l| l.as_array())
+        .or_else(|| {
+            inner
+                .as_ref()
+                .and_then(|d| d.get("list"))
+                .and_then(|l| l.as_array())
+        })
+        .or_else(|| data.as_array())
+        .cloned()
+        .unwrap_or_default()
 }
 
 /// 首登奖励（部分账号需要手动触发）。
+///
+/// # 为什么需要它
+///
+/// 客户端**每次登录后**会自动调本端点完成积分账号初始化：服务端下发注册奖励
+/// 并**生成 5 个邀请码**。通过本工具导入的账号跳过了这一步，表现就是
+/// `invitation-codes` 返回空列表（"我生成的码"空）且注册奖励没到账。
+/// 实测对空账号调用后立刻拿到 5 个码。
+///
+/// 服务端有 `alreadyProcessed` 幂等保护，重复调用不会重复发奖。
 pub async fn first_login(http: &reqwest::Client, session: &str) -> Result<()> {
     call(
         http,
         session,
         reqwest::Method::POST,
         "/points/first-login",
-        Some(serde_json::json!({})),
+        Some(serde_json::json!({ "deviceId": new_device_id() })),
     )
     .await?;
     Ok(())
@@ -586,6 +762,162 @@ mod tests {
         let v = serde_json::json!({"activated": true, "appliedInvitationCode": "ZZ9999"});
         let a: ActivationState = serde_json::from_value(v).unwrap();
         assert_eq!(a.applied_code, "ZZ9999");
+    }
+
+    /// **绑定请求体的字段名必须是 `inviteCode`**（不是 `invitationCode`）。
+    ///
+    /// # 这条测试抓的是一个真实 bug（"绑定不了邀请码"）
+    ///
+    /// 第一版发的是 `{"invitationCode": code}` —— 名字读起来更"对"，
+    /// 因为**读**激活状态的回执里字段确实叫 `appliedInvitationCode`。
+    /// 但**写**接口不认这个名字。对线上实测的对照：
+    ///
+    /// ```text
+    /// {"invitationCode":"ZZZZZZ"}                 -> 100001 请求参数错误
+    /// {"inviteCode":"ZZZZZZ","deviceId":"..."}   -> 000000 成功
+    /// ```
+    ///
+    /// 症状是"绑定不了"，而返回的错误只说"请求参数错误"，根本不提字段名 ——
+    /// 从现象无法反推原因。所以这里把字段名钉死。
+    #[test]
+    fn bind_payload_uses_upstream_field_names() {
+        let p = bind_payload("AB12CD");
+
+        assert_eq!(
+            p.get("inviteCode").and_then(|v| v.as_str()),
+            Some("AB12CD"),
+            "上游写接口认 inviteCode（实际：{p}）"
+        );
+        assert!(
+            p.get("invitationCode").is_none(),
+            "必须是 inviteCode —— invitationCode 会让上游回 100001（实际：{p}）"
+        );
+
+        // deviceId 是协议要求的，形状为 loomy-campus-<uuid>
+        let d = p
+            .get("deviceId")
+            .and_then(|v| v.as_str())
+            .expect("绑定请求必须带 deviceId");
+        assert!(
+            d.starts_with("loomy-campus-"),
+            "deviceId 形状应为 loomy-campus-<uuid>（实际：{d}）"
+        );
+        assert!(
+            d.len() > "loomy-campus-".len() + 30,
+            "deviceId 后面应当是一个 UUID（实际：{d}）"
+        );
+    }
+
+    /// 每次生成的 deviceId 必须不同。
+    ///
+    /// 复用同一个会让上游把多个账号识别成同一台设备（风控归因错误）。
+    #[test]
+    fn device_id_is_fresh_each_time() {
+        let a = new_device_id();
+        let b = new_device_id();
+        assert_ne!(a, b, "deviceId 不该复用");
+        assert!(a.starts_with("loomy-campus-"));
+    }
+
+    /// 上游的晦涩错误码要翻译成人话。
+    ///
+    /// 不翻译的话，用户看到的就是"绑定失败：积分接口 /points/activation
+    /// 返回 100001: 请求参数错误" —— 完全看不出该怎么办。
+    #[test]
+    fn bind_errors_are_translated_to_human_text() {
+        let cases = [
+            ("100001", "不能绑定自己账号生成的邀请码"),
+            ("200002", "邀请码不存在"),
+            ("200003", "邀请码不可用"),
+        ];
+        for (code, expect) in cases {
+            let e = Error::Upstream {
+                code: code.into(),
+                desc: "请求参数错误".into(),
+            };
+            let msg = translate_bind_error(e).to_string();
+            assert!(
+                msg.contains(expect),
+                "错误码 {code} 应翻译出 {expect:?}（实际：{msg}）"
+            );
+            // 每种都要带可行动的提示，不能只有一句话
+            assert!(
+                msg.contains("我生成的邀请码"),
+                "错误码 {code} 的提示应当告诉用户去哪找码（实际：{msg}）"
+            );
+        }
+    }
+
+    /// 没命中已知错误码时，要保留上游原文（别把线索丢了）。
+    #[test]
+    fn unknown_bind_error_keeps_original_text() {
+        let e = Error::Other("网络超时".into());
+        let msg = translate_bind_error(e).to_string();
+        assert!(msg.contains("网络超时"), "未命中的错误必须保留原文：{msg}");
+    }
+
+    /// 长度粗校验：明显不对的直接拒（不发请求），可疑长度放给上游判。
+    #[test]
+    fn bind_length_guard_is_loose_not_strict() {
+        // 这些明显不对，应当本地就拒
+        for bad in ["A", "AB", "ABC"] {
+            assert!(
+                bad.len() < 4,
+                "测试数据本身要短于 4（{bad}）—— 这是本地拒绝的下界"
+            );
+        }
+        // 6 位是实测长度，必须放行给上游
+        let ok = "E3HRN8";
+        assert!(
+            ok.len() >= 4 && ok.len() <= 32,
+            "{ok} 应当放行给上游（不因长度被本地拒）"
+        );
+        // 不能写死"必须 6 位"—— 那会在上游改长度时误杀
+        let longer = "ABCDEFGH";
+        assert!(
+            longer.len() >= 4 && longer.len() <= 32,
+            "8 位码不该被本地拒（上游才是权威）"
+        );
+    }
+
+    /// 回执多包一层 `{"data":{…}}` 时也要认（否则静默显示"未激活"）。
+    #[test]
+    fn activation_state_found_in_nested_data() {
+        let flat = serde_json::json!({"activated": true, "appliedInvitationCode": "V5GZ3M"});
+        let nested =
+            serde_json::json!({"data": {"activated": true, "appliedInvitationCode": "V5GZ3M"}});
+
+        assert_eq!(nested_data(&flat), None, "没有 data 层时应为 None");
+        let inner = nested_data(&nested).expect("应当取到 data 那一层");
+        assert_eq!(inner["activated"], true);
+    }
+
+    /// `activated` 存在且为 false 是**有效答案**，不能继续往下一层找。
+    #[test]
+    fn activation_false_is_a_real_answer() {
+        let v = serde_json::json!({"activated": false, "appliedInvitationCode": ""});
+        let probe: Option<bool> = v.get("activated").and_then(|x| x.as_bool());
+        assert_eq!(
+            probe,
+            Some(false),
+            "false 与「字段不存在」必须能区分 —— 否则未激活会被判成要找下一层"
+        );
+    }
+
+    /// `invitation-codes` 的形状容错：list / data.list / 裸数组 / 字符串元素。
+    #[test]
+    fn invite_codes_tolerate_all_shapes() {
+        // 当前实测形状
+        let a = serde_json::json!({"list": [{"inviteCode": "E3HRN8", "status": "exhausted"}]});
+        assert_eq!(extract_invite_list(&a).len(), 1);
+        // v2 风格外层包装
+        let b = serde_json::json!({"data": {"list": [{"inviteCode": "SSK5MC"}]}});
+        assert_eq!(extract_invite_list(&b).len(), 1);
+        // 裸数组
+        let c = serde_json::json!([{"inviteCode": "3PAXHB"}]);
+        assert_eq!(extract_invite_list(&c).len(), 1);
+        // 空回执不能 panic
+        assert!(extract_invite_list(&serde_json::json!({})).is_empty());
     }
 
     #[test]

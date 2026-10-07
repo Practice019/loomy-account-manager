@@ -99,10 +99,32 @@ pub async fn bind_invite(userid: String, code: String) -> Result<()> {
 }
 
 /// 查自己生成的邀请码。
+///
+/// # 空列表时自动补一次 `first-login`
+///
+/// 客户端**每次登录后**都会自动调 `POST /points/first-login` 完成积分账号初始化，
+/// 服务端借此下发注册奖励并**生成 5 个邀请码**。而通过本工具导入的账号没有
+/// 走过这一步，于是 `invitation-codes` 返回**空列表** —— 现象是"我没有邀请码"，
+/// 而排在账号列表里的其它号都有。
+///
+/// 所以这里：查询成功但结果为空 → 自动补一次首登 → 再查一次。
+/// 服务端有 `alreadyProcessed` 幂等保护，重复调用不会重复发奖。
+///
+/// 注意只在**查询成功且为空**时才补：查询本身失败（网络/鉴权）时补首登没有意义，
+/// 反而会把真正的错误盖掉。
 #[tauri::command]
 pub async fn fetch_my_invites(userid: String) -> Result<Vec<points::InviteCode>> {
     let s = session_of(&userid)?;
-    points::my_invite_codes(&http::shared(), &s).await
+    let client = http::shared();
+
+    let codes = points::my_invite_codes(&client, &s).await?;
+    if !codes.is_empty() {
+        return Ok(codes);
+    }
+
+    // 补初始化；失败就返回原来的空列表（这是"附加信息"，不该让整个调用报错）。
+    points::first_login(&client, &s).await?;
+    points::my_invite_codes(&client, &s).await
 }
 
 /// 首登奖励。

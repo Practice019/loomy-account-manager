@@ -3,6 +3,45 @@
 本文件记录面向**使用者**的变化。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.0.2] - 2026-10-07
+
+修复邀请码绑定（**功能可用性**问题，不是打磨）。
+
+### 修复
+
+- **邀请码绑定不了**（严重）：请求体字段名写错了。
+  `POST /points/activation` 的**写**接口认 `inviteCode`，而我们发的是
+  `invitationCode` —— 名字读起来更"对"，因为**读**激活状态时上游返回的字段
+  确实叫 `appliedInvitationCode`。但写接口不认这个名字，只回一句笼统的
+  `100001 请求参数错误`，从现象完全无法反推原因。实测对照：
+
+  ```text
+  {"invitationCode":"ZZZZZZ"}                 -> 100001 请求参数错误
+  {"inviteCode":"ZZZZZZ","deviceId":"..."}   -> 000000 成功
+  ```
+
+  已改用 `inviteCode`，并补上协议要求的 `deviceId`（形如
+  `loomy-campus-<uuid>`，仅用于风控归因、不参与鉴权；每次生成新的）。
+
+- **绑定失败的提示看不懂**：上游三种失败原因分别回
+  `100001`/`200002`/`200003`，界面直接把这些数字和那句笼统的
+  "请求参数错误"甩给用户。现已翻译成人话（自绑 / 码不存在 / 码已用过），
+  并附上"去哪找可用的码"的提示。
+
+- **"我生成的邀请码"一直是空的**：客户端每次登录后会自动调
+  `POST /points/first-login` 完成积分账号初始化，服务端借此生成 5 个邀请码；
+  而通过本工具导入的账号跳过了这一步。现在查询结果为空时会**自动补一次**
+  首登再重查（服务端有幂等保护，不会重复发奖）。
+
+- **隐藏的"未激活"**：若回执多包一层 `{"data":{…}}`，原来会因为找不到
+  `activated` 而静默显示"未激活"——账号其实已激活，用户会以为绑定失败。
+  现在两层都会找。
+
+### 变更
+
+- **邀请码长度校验放宽**：原来是"必须 6 位"就本地拒绝，改为只拒明显异常的
+  （<4 或 >32）。上游才是权威，写死长度会在上游调整时误杀正确输入。
+
 ## [2.0.1] - 2026-10-04
 
 修补发布产物。功能代码无变化。
@@ -115,5 +154,6 @@
 Tauri 重写之前的版本。CLI 与本地 Web 界面，使用 Node.js，实现
 token 导入/导出、备份式无感切换、余额与任务查询。
 
+[2.0.2]: https://github.com/Practice019/loomy-account-manager/releases/tag/v2.0.2
 [2.0.1]: https://github.com/Practice019/loomy-account-manager/releases/tag/v2.0.1
 [2.0.0]: https://github.com/Practice019/loomy-account-manager/releases/tag/v2.0.0

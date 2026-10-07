@@ -1,6 +1,6 @@
 [package]
 name = "loomy-account-manager"
-version = "2.0.1"
+version = "2.0.2"
 description = "Loomy 账号管理器 —— 导入、切换、余额与任务"
 authors = ["loomy-account-manager contributors"]
 edition = "2021"
@@ -44,6 +44,10 @@ crc32c = "0.6"
 
 # 时间戳
 chrono = { version = "0.4", features = ["serde"] }
+
+# 随机 deviceId（绑定邀请码时上游要求带，见 clients/points.rs）
+# 已在依赖树里（tauri 间接依赖），启用 v4 即可，不引入新的传递依赖。
+uuid = { version = "1", features = ["v4"] }
 
 # 错误处理
 thiserror = "2"
