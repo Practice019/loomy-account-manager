@@ -153,7 +153,7 @@ jobs:
       # 用 `target/**/bundle/**/` 两种布局都能覆盖。
       # 另：这里不要用 `*.{msi,exe}` 花括号语法，该版本未开启 brace expansion。
       - name: 上传构建产物
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: bundles-${{ matrix.artifact }}
           # 只取安装包，不要中间的 .rlib/.d 之类
