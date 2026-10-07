@@ -1,6 +1,6 @@
 [package]
 name = "loomy-account-manager"
-version = "2.0.0"
+version = "2.0.1"
 description = "Loomy 账号管理器 —— 导入、切换、余额与任务"
 authors = ["loomy-account-manager contributors"]
 edition = "2021"

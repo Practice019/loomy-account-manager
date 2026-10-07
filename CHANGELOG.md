@@ -3,6 +3,38 @@
 本文件记录面向**使用者**的变化。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.0.1] - 2026-10-04
+
+修补发布产物。功能代码无变化。
+
+### 修复
+
+- **Windows 没有 `.exe` 安装包**：`bundle.targets` 里只列了 `msi`，没列 `nsis`。
+  Tauri 的 Windows 安装包由两个**互不相关**的打包器产出 —— WiX 出 `.msi`，
+  NSIS 出 `.exe`，不列就不会生成。现已加入 `nsis`，
+  并限定 `SimpChinese` + `English`（默认只有 `English`，中文系统上
+  安装向导会显示英文）。
+- **Release 说明里承诺了不存在的文件**：下载表写着「Windows x64：`.msi` 或 `.exe`」，
+  而当时根本没有 `.exe`。现已改为逐个文件列出，并明确标注
+  **`.dmg` 是 macOS 的、Windows 打不开**，以及各 `.dmg` 分别对应哪种
+  芯片（aarch64 = Apple Silicon，x64 = Intel）—— 原来只写 aarch64/x64，
+  让不熟悉架构名的人无从判断。
+- **构建产物的 artifact 兜底从未生效**：`upload-artifact` 的路径写的是
+  `src-tauri/target/**/release/bundle/*.msi`，而 `@actions/glob` 的 `**`
+  匹配**一或多**个路径段、**不匹配零个**，真实产物在
+  `target/release/bundle/msi/`（Windows/Linux 不带 `--target`），
+  中间没有目录，于是**四个平台全部零匹配**。因为设了
+  `if-no-files-found: warn`，它只打印一条警告，静默失效。
+  现已改为 `target/**/bundle/**/*.<ext>`。
+
+### 移除
+
+- **`.app.tar.gz` 不再作为发行资产**：它是 macOS 的「更新载荷」
+  （`tauri-action` 把 `.app` 目录压成的 tar.gz），只有接了自动更新器才有用。
+  本项目没有配置 `plugins.updater`，所以它只是下载列表里的干扰项。
+  已从 `bundle.targets` 去掉 `"app"`；`.dmg` 内部会自行构建 `.app`，
+  不受影响。
+
 ## [2.0.0] - 2026-10-03
 
 这是一个**重写**版本：从 Node.js CLI + Web 界面改为 Tauri 桌面应用。
@@ -83,4 +115,5 @@
 Tauri 重写之前的版本。CLI 与本地 Web 界面，使用 Node.js，实现
 token 导入/导出、备份式无感切换、余额与任务查询。
 
+[2.0.1]: https://github.com/Practice019/loomy-account-manager/releases/tag/v2.0.1
 [2.0.0]: https://github.com/Practice019/loomy-account-manager/releases/tag/v2.0.0

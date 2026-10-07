@@ -109,22 +109,31 @@ jobs:
 
             ## 下载
 
-            | 平台 | 文件 |
-            |---|---|
-            | Windows x64 | `.msi` 或 `.exe` |
-            | macOS（Apple Silicon） | `.dmg`（aarch64） |
-            | macOS（Intel） | `.dmg`（x64） |
-            | Linux x64 | `.AppImage` / `.deb` / `.rpm` |
+            按你的系统挑一个就行，**不用全下**：
+
+            | 系统 | 架构 | 文件名 | 说明 |
+            |---|---|---|---|
+            | **Windows** | x64 | `LoomyAccountManager_<版本>_x64_zh-CN.msi` | WiX 安装包（推荐，免管理员） |
+            | **Windows** | x64 | `LoomyAccountManager_<版本>_x64-setup.exe` | NSIS 安装包，与 `.msi` 等价，选一个即可 |
+            | **macOS** | Apple Silicon（M 系列） | `LoomyAccountManager_<版本>_aarch64.dmg` | 只适用于 ARM 芯片的 Mac |
+            | **macOS** | Intel | `LoomyAccountManager_<版本>_x64.dmg` | 只适用于 Intel 芯片的 Mac |
+            | **Linux** | x64 | `LoomyAccountManager_<版本>_amd64.AppImage` | 免安装，`chmod +x` 后直接跑 |
+            | **Linux** | x64 | `LoomyAccountManager_<版本>_amd64.deb` | Debian / Ubuntu |
+            | **Linux** | x64 | `LoomyAccountManager-<版本>-1.x86_64.rpm` | Fedora / RHEL / openSUSE |
+
+            > `.dmg` 是 **macOS** 的磁盘映像，不是 Windows 安装包 —— Windows 用户请用 `.msi` 或 `.exe`。
+            > 分不清自己的 Mac 是哪种芯片？左上角苹果菜单 →「关于本机」看「芯片」一行。
 
             Windows 需要 [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) 运行时
             （Win11 已内置，Win10 一般也有；安装包会自动处理）。
 
             > macOS 与 Linux 版本未做代码签名，首次打开可能需要在系统设置里放行。
+            > macOS 若提示「已损坏」，执行 `xattr -dr com.apple.quarantine /Applications/LoomyAccountManager.app`。
 
             ## 数据安全
 
             除查询余额 / 任务 / 邀请码时调用 Loomy 官方接口外，全部为本地文件操作。
-            账号库在 `%APPDATA%\\LoomyAccountManager\\`（Windows）。
+            账号库在 `%APPDATA%\LoomyAccountManager\`（Windows）。
           # 手动触发时保持草稿（先看构建结果再决定是否发布）
           releaseDraft: ${{ github.event_name == 'workflow_dispatch' }}
           prerelease: false
@@ -133,18 +142,27 @@ jobs:
       # ── 产物留存 ──────────────────────────────────────────────────
       # 即便发布失败，也把安装包留成可下载的 artifact，便于排查。
       # GitHub Release 的资产在发布成功后才有，artifact 在构建结束就有。
+      #
+      # ⚠ 路径里必须写 `bundle/**/*.<ext>`，不能写 `**/release/bundle/*.<ext>`。
+      # `@actions/glob` 的 `**` 匹配**一或多**个路径段，**不匹配零个**。
+      # 真实产物在 `target/release/bundle/msi/x.msi`（Windows/Linux，
+      # 不带 --target）—— `target/**/release/...` 要求 `target` 与 `release`
+      # 之间**至少**有一层目录，于是永远匹配不到，`if-no-files-found: warn`
+      # 又只打印警告，这个兜底就静默失效了（v2.0.0 四个平台全部零文件）。
+      # macOS 带 `--target`，路径是 `target/<triple>/release/bundle/...`，
+      # 用 `target/**/bundle/**/` 两种布局都能覆盖。
+      # 另：这里不要用 `*.{msi,exe}` 花括号语法，该版本未开启 brace expansion。
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
           name: bundles-${{ matrix.artifact }}
           # 只取安装包，不要中间的 .rlib/.d 之类
           path: |
-            src-tauri/target/**/release/bundle/*.msi
-            src-tauri/target/**/release/bundle/*.exe
-            src-tauri/target/**/release/bundle/*.dmg
-            src-tauri/target/**/release/bundle/*.app.tar.gz
-            src-tauri/target/**/release/bundle/*.AppImage
-            src-tauri/target/**/release/bundle/*.deb
-            src-tauri/target/**/release/bundle/*.rpm
+            src-tauri/target/**/bundle/**/*.msi
+            src-tauri/target/**/bundle/**/*.exe
+            src-tauri/target/**/bundle/**/*.dmg
+            src-tauri/target/**/bundle/**/*.AppImage
+            src-tauri/target/**/bundle/**/*.deb
+            src-tauri/target/**/bundle/**/*.rpm
           if-no-files-found: warn
           retention-days: 14

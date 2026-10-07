@@ -56,19 +56,27 @@ Loomy 桌面端一次只能登录一个账号。想换号得手动退出、重�
 
 ## 下载
 
-从 [Releases](../../releases/latest) 下载对应平台的安装包：
+从 [Releases](../../releases/latest) 下载对应平台的安装包。**每个平台只需要一个文件**，不用全下：
 
-| 平台 | 文件 |
-|---|---|
-| **Windows** x64 | `.msi`（推荐）或 `.exe` |
-| **macOS** Apple Silicon | `.dmg`（aarch64） |
-| **macOS** Intel | `.dmg`（x64） |
-| **Linux** x64 | `.AppImage` / `.deb` / `.rpm` |
+| 系统 | 架构 | 文件 | 说明 |
+|---|---|---|---|
+| **Windows** | x64 | `LoomyAccountManager_<版本>_x64_zh-CN.msi` | WiX 安装包（推荐） |
+| **Windows** | x64 | `LoomyAccountManager_<版本>_x64-setup.exe` | NSIS 安装包，与 `.msi` 等价，选一个即可 |
+| **macOS** | Apple Silicon（M 系列） | `LoomyAccountManager_<版本>_aarch64.dmg` | 只能用于 ARM 芯片的 Mac |
+| **macOS** | Intel | `LoomyAccountManager_<版本>_x64.dmg` | 只能用于 Intel 芯片的 Mac |
+| **Linux** | x64 | `LoomyAccountManager_<版本>_amd64.AppImage` | 免安装，`chmod +x` 后直接运行 |
+| **Linux** | x64 | `LoomyAccountManager_<版本>_amd64.deb` | Debian / Ubuntu |
+| **Linux** | x64 | `LoomyAccountManager-<版本>-1.x86_64.rpm` | Fedora / RHEL / openSUSE |
+
+> `.dmg` 是 **macOS** 的磁盘映像，Windows 打不开 —— Windows 请下 `.msi` 或 `.exe`。
+> 不确定 Mac 是哪种芯片：左上角苹果菜单 →「关于本机」，看「芯片」一行。
 
 Windows 需要 [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) 运行时
 （Windows 11 已内置，Windows 10 一般也有，安装包会自动处理）。
 
 > macOS 与 Linux 版本未做代码签名，首次打开可能需要在系统设置里放行。
+> macOS 若提示「已损坏」无法打开，执行：
+> `xattr -dr com.apple.quarantine /Applications/LoomyAccountManager.app`
 > Windows 版安装到 `%LOCALAPPDATA%`，**不需要管理员权限**。
 
 ---
