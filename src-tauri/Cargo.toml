@@ -57,12 +57,12 @@ tauri-plugin-single-instance = "2"
 
 [target.'cfg(windows)'.dependencies]
 # 隐藏子进程窗口（taskkill / tasklist）
-windows-sys = { version = "0.59", features = [
+windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_System_Threading",
 ] }
 # 从注册表读 Loomy 的安装位置（比硬编码 exe 路径可靠）
-winreg = "0.52"
+winreg = "0.55"
 
 [features]
 # 由 tauri-build 在 dev 时注入
