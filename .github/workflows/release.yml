@@ -55,7 +55,7 @@ jobs:
             artifact: linux-x64
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── Linux 系统依赖（Tauri 需要 WebKit 与打包工具）──────────────
       - name: 安装系统依赖（仅 Linux）
